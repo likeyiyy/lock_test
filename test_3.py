@@ -1,5 +1,4 @@
 import ctypes
-import time
 from multiprocessing import Process, sharedctypes, Queue, Value, Event
 
 import matplotlib.pyplot as plt
@@ -30,6 +29,7 @@ def process_1():
     # 在第一个进程中生成图像数据
     i = 1
     while True:
+        # 等待消费者ready事件
         consumer_event.wait()
 
         file_name = f'images/image{i}.jpeg'
@@ -50,14 +50,14 @@ def process_1():
             break
 
 
-
 def process_2():
     # 在第二个进程中处理共享内存数组中的数据
     i = 1
     while True:
-        # 等待事件
+        # 消费者ready
         consumer_event.set()
 
+        # 等待生产者事件
         producer_event.wait()
         file_name = queue.get()
         print("process 2", file_name)
