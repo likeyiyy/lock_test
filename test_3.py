@@ -1,5 +1,6 @@
 import ctypes
-from multiprocessing import Process, sharedctypes, Queue
+import time
+from multiprocessing import Process, sharedctypes, Queue, Value, Event
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -8,9 +9,15 @@ from PIL import Image
 WIDTH = 1920
 HEIGHT = 1080
 
+# 创建一个共享内存变量，类型为 c_int
+consumer_is_full = Value('i', 0, lock=False)
+
 # 创建队列
 queue = Queue()
 
+# 创建一个事件
+producer_event = Event()
+consumer_event = Event()
 
 # 创建一个共享内存数组，类型为 c_uint8，形状为 (1920, 1080, 3)
 shared_array = sharedctypes.RawArray(ctypes.c_int8, HEIGHT * WIDTH * 3)
@@ -21,27 +28,48 @@ np_array = np.frombuffer(shared_array, dtype=np.uint8).reshape((HEIGHT, WIDTH, 3
 
 def process_1():
     # 在第一个进程中生成图像数据
-    for i in range(1, 5):
+    i = 1
+    while True:
+        consumer_event.wait()
+
         file_name = f'images/image{i}.jpeg'
+        print("process 1", file_name)
         with open(file_name, 'rb') as f:
             # 使用 PIL 库的 Image.open 函数将图片加载到内存中
             image = Image.open(f)
             # 使用 numpy 库的 asarray 函数将图片转换为 NumPy 数组
-            image_array = np.asarray(image)
-            print(image_array.shape)  # 输出图片的形状
-            print(image_array.dtype)  # 输出图片的数据类型
             # 将数据复制到共享内存数组中
-            np_array[:] = image_array
+            np_array[:] = np.asarray(image)
             queue.put(file_name)
+
+        consumer_event.clear()
+        # 设置事件
+        producer_event.set()
+        i += 1
+        if i == 5:
+            break
+
 
 
 def process_2():
     # 在第二个进程中处理共享内存数组中的数据
-    file_name = queue.get()
-    print(file_name)
-    image = Image.fromarray(np_array)
-    plt.imshow(image)
-    plt.show()
+    i = 1
+    while True:
+        # 等待事件
+        consumer_event.set()
+
+        producer_event.wait()
+        file_name = queue.get()
+        print("process 2", file_name)
+        image = np_array
+        plt.imshow(image)
+        plt.show()
+        # 清除事件
+        producer_event.clear()
+
+        i += 1
+        if i == 5:
+            break
 
 
 # 创建两个进程
